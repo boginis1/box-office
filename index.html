@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>To Take or Not Take - Hotel Group Simulator</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --good: #0f766e;
+      --bad: #b91c1c;
+      --primary: #1d4ed8;
+      --border: #dbe3ef;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 920px;
+      margin: 24px auto;
+      padding: 0 16px 32px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 6px 18px rgba(20, 32, 59, 0.08);
+      margin-bottom: 16px;
+    }
+
+    h1 { margin: 0 0 8px; }
+    h2 { margin: 0 0 12px; font-size: 1.2rem; }
+    p { margin: 8px 0; }
+    .muted { color: var(--muted); }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafcff;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .take { background: #dcfce7; color: #065f46; }
+    .not-take { background: #fee2e2; color: #991b1b; }
+    .next { background: var(--primary); color: white; }
+
+    .hidden { display: none; }
+    .result-good { color: var(--good); font-weight: 700; }
+    .result-bad { color: var(--bad); font-weight: 700; }
+
+    pre {
+      white-space: pre-wrap;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 14px;
+      border-radius: 10px;
+      line-height: 1.45;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>Hotel Group Booking Simulator</h1>
+      <p class="muted">Choose <strong>Take</strong> or <strong>Not Take</strong>, then review displacement analysis and coaching feedback.</p>
+      <p id="progress" class="muted"></p>
+    </div>
+
+    <div id="scenario-card" class="card"></div>
+
+    <div id="analysis-card" class="card hidden">
+      <h2>Displacement Analysis</h2>
+      <pre id="analysis-text"></pre>
+      <p id="result-text"></p>
+      <p id="reason-text"></p>
+      <div class="buttons">
+        <button id="next-btn" class="next">Next Scenario</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const scenarios = [
+      {
+        name: "Regional Medical Conference",
+        description: "A weekday-heavy conference wants 120 rooms per night for 3 nights in September.",
+        stayNights: 3,
+        roomNightsRequested: 360,
+        groupRate: 189,
+        variableCostPerRoom: 42,
+        expectedDisplacedRoomNights: 240,
+        expectedTransientRate: 249,
+        ancillaryRevenuePerRoomNight: 18,
+        meetingSpaceCost: 4200,
+        hotelPacingOccupancy: 0.87,
+        hotelPacingRate: 252,
+      },
+      {
+        name: "Youth Sports Tournament",
+        description: "A weekend tournament asks for 80 rooms per night for 2 nights in a traditionally soft shoulder period.",
+        stayNights: 2,
+        roomNightsRequested: 160,
+        groupRate: 149,
+        variableCostPerRoom: 35,
+        expectedDisplacedRoomNights: 40,
+        expectedTransientRate: 199,
+        ancillaryRevenuePerRoomNight: 12,
+        meetingSpaceCost: 1200,
+        hotelPacingOccupancy: 0.62,
+        hotelPacingRate: 191,
+      },
+      {
+        name: "Pharma Sales Kickoff",
+        description: "A premium group requests 100 rooms per night for 4 nights during your citywide event period.",
+        stayNights: 4,
+        roomNightsRequested: 400,
+        groupRate: 239,
+        variableCostPerRoom: 48,
+        expectedDisplacedRoomNights: 310,
+        expectedTransientRate: 319,
+        ancillaryRevenuePerRoomNight: 36,
+        meetingSpaceCost: 6800,
+        hotelPacingOccupancy: 0.96,
+        hotelPacingRate: 327,
+      },
+    ];
+
+    let scenarioIndex = 0;
+
+    const scenarioCard = document.getElementById("scenario-card");
+    const analysisCard = document.getElementById("analysis-card");
+    const analysisText = document.getElementById("analysis-text");
+    const resultText = document.getElementById("result-text");
+    const reasonText = document.getElementById("reason-text");
+    const progressText = document.getElementById("progress");
+    const nextBtn = document.getElementById("next-btn");
+
+    function money(v) {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
+    }
+
+    function groupContribution(s) {
+      return (s.groupRate + s.ancillaryRevenuePerRoomNight - s.variableCostPerRoom) * s.roomNightsRequested - s.meetingSpaceCost;
+    }
+
+    function displacedContribution(s) {
+      return (s.expectedTransientRate - s.variableCostPerRoom) * s.expectedDisplacedRoomNights;
+    }
+
+    function shouldTake(s) {
+      return groupContribution(s) >= displacedContribution(s);
+    }
+
+    function renderScenario() {
+      if (scenarioIndex >= scenarios.length) {
+        progressText.textContent = "Complete";
+        scenarioCard.innerHTML = "<h2>All scenarios complete 🎉</h2><p>You can refresh to practice again.</p>";
+        analysisCard.classList.add("hidden");
+        return;
+      }
+
+      const s = scenarios[scenarioIndex];
+      progressText.textContent = `Scenario ${scenarioIndex + 1} of ${scenarios.length}`;
+      scenarioCard.innerHTML = `
+        <h2>${s.name}</h2>
+        <p>${s.description}</p>
+        <div class="metrics">
+          <div class="metric"><strong>Current pace</strong><br />${Math.round(s.hotelPacingOccupancy * 100)}% occupancy at ${money(s.hotelPacingRate)} ADR</div>
+          <div class="metric"><strong>Stay length</strong><br />${s.stayNights} nights</div>
+          <div class="metric"><strong>Group room nights</strong><br />${s.roomNightsRequested}</div>
+          <div class="metric"><strong>Group ADR</strong><br />${money(s.groupRate)}</div>
+          <div class="metric"><strong>Displaced room nights</strong><br />${s.expectedDisplacedRoomNights}</div>
+          <div class="metric"><strong>Transient ADR</strong><br />${money(s.expectedTransientRate)}</div>
+        </div>
+        <div class="buttons">
+          <button class="take" data-decision="take">Take</button>
+          <button class="not-take" data-decision="not">Not Take</button>
+        </div>
+      `;
+
+      analysisCard.classList.add("hidden");
+      scenarioCard.querySelectorAll("button[data-decision]").forEach((btn) => {
+        btn.addEventListener("click", () => evaluate(btn.dataset.decision));
+      });
+    }
+
+    function evaluate(decision) {
+      const s = scenarios[scenarioIndex];
+      const g = groupContribution(s);
+      const d = displacedContribution(s);
+      const net = g - d;
+      const recommendTake = shouldTake(s);
+      const userCorrect = (decision === "take") === recommendTake;
+
+      analysisText.textContent =
+        `Group contribution = (group ADR + ancillary - variable cost) x group room nights - meeting cost\n` +
+        `= (${money(s.groupRate)} + ${money(s.ancillaryRevenuePerRoomNight)} - ${money(s.variableCostPerRoom)}) x ${s.roomNightsRequested} - ${money(s.meetingSpaceCost)}\n` +
+        `= ${money(g)}\n\n` +
+        `Displaced contribution = (transient ADR - variable cost) x displaced room nights\n` +
+        `= (${money(s.expectedTransientRate)} - ${money(s.variableCostPerRoom)}) x ${s.expectedDisplacedRoomNights}\n` +
+        `= ${money(d)}\n\n` +
+        `Net impact if accepted = ${money(net)}\n` +
+        `Recommendation: ${recommendTake ? "TAKE" : "DO NOT TAKE"}`;
+
+      resultText.className = userCorrect ? "result-good" : "result-bad";
+      resultText.textContent = userCorrect ? "✅ Correct decision." : "❌ Not the best decision in this case.";
+      reasonText.textContent = recommendTake
+        ? "Why: The group contributes at least as much profit as displaced transient demand."
+        : "Why: Displaced transient demand contributes more profit than the group offer.";
+
+      nextBtn.textContent = scenarioIndex === scenarios.length - 1 ? "Finish" : "Next Scenario";
+      analysisCard.classList.remove("hidden");
+    }
+
+    nextBtn.addEventListener("click", () => {
+      scenarioIndex += 1;
+      renderScenario();
+    });
+
+    renderScenario();
+  </script>
+</body>
+</html>
